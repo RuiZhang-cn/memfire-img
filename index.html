@@ -1,0 +1,269 @@
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>图片上传页面</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
+
+    <style>
+        #upload-container {
+            width: 100%;
+            height: 200px;
+            border: 2px dashed #007bff;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            position: relative;
+            cursor: pointer;
+        }
+
+        #drop-area {
+            padding: 20px;
+        }
+
+        .upload-link {
+            color: #007bff;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        table, th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+
+        th {
+            text-align: left;
+            background-color: #f2f2f2;
+        }
+
+        textarea {
+            width: 100%;
+            border: none;
+            background-color: #f9f9f9;
+        }
+
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 20px;
+            color: #fff;
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        /* 可根据需要添加更多样式 */
+
+    </style>
+</head>
+
+<body>
+<div id="upload-container">
+    <input type="file" id="file-upload" accept="image/*" style="display: none;">
+    <div id="drop-area">
+        <p>拖拽图片到这里或 <span class="upload-link">浏览</span> 以上传</p>
+    </div>
+</div>
+<div id="loading" style="display: none;">上传中...</div>
+<div id="info-table">
+
+</div>
+
+<script>
+    // 配置参数
+    // 应用URL
+    const API_URL = '';
+    // 应用API密钥 公钥
+    const AUTHORIZATION_TOKEN = '';
+    // 桶名称
+    const BUCKET_NAME = '';
+
+    document.getElementById('drop-area').addEventListener('click', function () {
+        document.getElementById('file-upload').click();
+    });
+
+    document.getElementById('file-upload').addEventListener('change', function (event) {
+        handleFiles(event.target.files);
+    });
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        document.getElementById('drop-area').addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        document.getElementById('drop-area').addEventListener(eventName, highlight, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        document.getElementById('drop-area').addEventListener(eventName, unhighlight, false);
+    });
+
+    function highlight(e) {
+        document.getElementById('drop-area').classList.add('highlight');
+    }
+
+    function unhighlight(e) {
+        document.getElementById('drop-area').classList.remove('highlight');
+    }
+
+    document.getElementById('drop-area').addEventListener('drop', function (e) {
+        let dt = e.dataTransfer;
+        let files = dt.files;
+        handleFiles(files);
+    });
+
+    function handleFiles(files) {
+        // 显示加载中...
+        document.getElementById('loading').style.display = 'block';
+        if (files.length === 0) {
+            alert('请选择文件');
+            document.getElementById('loading').style.display = 'none';
+            return;
+        }else if (files.length > 1) {
+            alert('目前版本只允许上传一个文件');
+            document.getElementById('loading').style.display = 'none';
+            return;
+        }
+
+        // 遍历files
+        uploadFile(files[0])
+            .then(previewUrl => {
+                console.log('File uploaded successfully. Preview URL:', previewUrl);
+                alert('上传成功！');
+                createAndShowTable(previewUrl, previewUrl);
+            })
+            .catch(error => {
+                console.error('File upload failed:', error);
+                // 这里你可以处理错误，比如显示错误消息给用户等
+                alert('上传失败！');
+            });
+        document.getElementById('loading').style.display = 'none';
+    }
+
+    function uploadFile(file) {
+        return new Promise((resolve, reject) => {
+            try {
+                // 生成UUID并获取文件后缀名
+                const fileExtension = file.name.split('.').pop();
+                const newFileName = `${generateUUID()}.${fileExtension}`;
+
+                // 准备上传
+                const formData = new FormData();
+                formData.append('file', file, newFileName);
+
+                const xhr = new XMLHttpRequest();
+                const url = `${API_URL}/storage/v1/object/${BUCKET_NAME}/${newFileName}`;
+
+                xhr.open('POST', url, true);
+                xhr.setRequestHeader('Authorization', `Bearer ${AUTHORIZATION_TOKEN}`);
+
+                xhr.onload = function () {
+                    if (xhr.status === 200) {
+                        const response = JSON.parse(xhr.responseText);
+                        const imageKey = response.Key;
+                        const previewUrl = `${API_URL}/storage/v1/object/public/${imageKey}`;
+                        resolve(previewUrl);
+                    } else {
+                        reject(`Error: ${xhr.status}`);
+                    }
+                };
+
+                xhr.onerror = function () {
+                    reject('Error in request');
+                };
+
+                xhr.send(formData);
+            } catch (error) {
+                console.error('Error uploading file:', error);
+                reject(error);
+            }
+        });
+    }
+
+    function generateUUID() {
+        let dt = new Date().getTime();
+        const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = (dt + Math.random() * 16) % 16 | 0;
+            dt = Math.floor(dt / 16);
+            return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+        });
+        return uuid;
+    }
+
+
+    function createAndShowTable(pageLink, uploadedImageUrl) {
+        const tableHtml = `
+                <table>
+                    <tr>
+                        <th>类型</th>
+                        <th>代码</th>
+                    </tr>
+                     <tr>
+                        <td>图片预览</td>
+                        <td><img src="${uploadedImageUrl}" alt="图片预览"></img></td>
+                    </tr>
+                    <tr>
+                        <td>图片链接</td>
+                        <td><a href="${pageLink}" target="_blank">${pageLink}</a></td>
+                    </tr>
+                    <tr>
+                        <td>网页贴图代码(HTML)</td>
+                        <td><textarea rows="2">&lt;a href="${pageLink}"&gt;&lt;img src="${uploadedImageUrl}" alt="Image" border="0" /&gt;&lt;/a&gt;</textarea></td>
+                    </tr>
+                    <tr>
+                        <td>论坛贴图代码(BBCode)</td>
+                        <td><textarea rows="2">[url=${pageLink}][img]${uploadedImageUrl}[/img][/url]</textarea></td>
+                    </tr>
+                    <tr>
+                        <td>Markdown代码</td>
+                        <td><textarea rows="2">[![Image](${uploadedImageUrl})](${pageLink})</textarea></td>
+                    </tr>
+                    <tr>
+                        <td>图片URL链接</td>
+                        <td><a href="${uploadedImageUrl}" target="_blank">${uploadedImageUrl}</a></td>
+                    </tr>
+                </table>
+            `;
+
+        // 假设有一个容器来展示这个表格
+        document.getElementById('info-table').innerHTML = tableHtml;
+    }
+
+    // 处理粘贴上传
+    window.addEventListener('paste', (event) => {
+        let paste = event.clipboardData || window.clipboardData;
+        if (paste.items) {
+            let items = paste.items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf("image") !== -1) {
+                    let file = items[i].getAsFile();
+                    let files = [file];
+                    handleFiles(files);
+                }
+            }
+        }
+    });
+
+
+</script>
+
+
+</body>
+
+</html>
